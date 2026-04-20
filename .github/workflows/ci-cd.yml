@@ -293,7 +293,7 @@ jobs:
   deploy:
     name: Deploy
     runs-on: ubuntu-latest
-    needs: build-and-scan
+    needs: integration-test
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
 
     steps:
@@ -305,47 +305,54 @@ jobs:
           echo "REDIS_PASSWORD=${{ secrets.REDIS_PASSWORD }}" > .env
           echo "APP_ENV=production" >> .env
 
-      - name: Perform rolling update
+      - name: Rolling update — API
         run: |
-          set -e
-          SHA=${{ github.sha }}
-
-          echo "=== Rolling update: API ==="
           docker compose build api
           docker compose up -d --no-deps api
 
-          # Wait up to 60s for API health check
           TIMEOUT=60
           ELAPSED=0
-          until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q api))" = "healthy" ]; do
+          while true; do
+            ELAPSED=$((ELAPSED + 5))
+            sleep 5
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q api) 2>/dev/null || echo "unknown")
+            echo "API health: $STATUS (${ELAPSED}s elapsed)"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "API is healthy."
+              break
+            fi
             if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "API health check failed after ${TIMEOUT}s — aborting, old container preserved"
-              docker compose up -d --no-deps --scale api=0 || true
+              echo "API failed health check after ${TIMEOUT}s — aborting"
+              docker compose logs api
               exit 1
             fi
-            echo "Waiting for API... (${ELAPSED}s)"
-            sleep 5
-            ELAPSED=$((ELAPSED + 5))
           done
-          echo "API is healthy."
 
-          echo "=== Rolling update: Worker ==="
+      - name: Rolling update — Worker
+        run: |
           docker compose build worker
           docker compose up -d --no-deps worker
           echo "Worker updated."
 
-          echo "=== Rolling update: Frontend ==="
+      - name: Rolling update — Frontend
+        run: |
           docker compose build frontend
           docker compose up -d --no-deps frontend
 
+          TIMEOUT=60
           ELAPSED=0
-          until [ "$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q frontend))" = "healthy" ]; do
+          while true; do
+            ELAPSED=$((ELAPSED + 5))
+            sleep 5
+            STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q frontend) 2>/dev/null || echo "unknown")
+            echo "Frontend health: $STATUS (${ELAPSED}s elapsed)"
+            if [ "$STATUS" = "healthy" ]; then
+              echo "Frontend is healthy. Deploy complete."
+              break
+            fi
             if [ $ELAPSED -ge $TIMEOUT ]; then
-              echo "Frontend health check failed — aborting"
+              echo "Frontend failed health check after ${TIMEOUT}s — aborting"
+              docker compose logs frontend
               exit 1
             fi
-            echo "Waiting for Frontend... (${ELAPSED}s)"
-            sleep 5
-            ELAPSED=$((ELAPSED + 5))
           done
-          echo "Frontend is healthy. Deploy complete."
