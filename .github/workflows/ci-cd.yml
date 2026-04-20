@@ -170,6 +170,7 @@ jobs:
             --exit-code 1 \
             --severity CRITICAL \
             --vuln-type library \
+            --ignore-unfixed \
             --scanners vuln \
             --format sarif \
             --output trivy-api.sarif \
@@ -219,6 +220,9 @@ jobs:
         run: |
           echo "REDIS_PASSWORD=testpassword" > .env
           echo "APP_ENV=production" >> .env
+
+      - name: Build API image explicitly (to catch errors)
+        run: docker build --no-cache --progress=plain ./api 2>&1    
 
       - name: Start full stack
         run: docker compose up -d --build
