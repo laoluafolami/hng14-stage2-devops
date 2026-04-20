@@ -223,45 +223,67 @@ jobs:
       - name: Start full stack
         run: docker compose up -d --build
 
-      - name: Wait for all services to be healthy
+      - name: Wait for frontend to be reachable (max 90s)
         run: |
-          echo "Waiting for services..."
-          for i in $(seq 1 30); do
-            FRONTEND=$(docker compose ps frontend --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Health',''))" 2>/dev/null || echo "")
-            API=$(docker compose ps api --format json | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('Health',''))" 2>/dev/null || echo "")
-            echo "Attempt $i: frontend=$FRONTEND api=$API"
-            if [ "$FRONTEND" = "healthy" ] && [ "$API" = "healthy" ]; then
-              echo "All services healthy!"
+          echo "Waiting for frontend..."
+          for i in $(seq 1 18); do
+            if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+              echo "Frontend is up!"
               break
             fi
+            echo "Attempt $i/18 — not ready yet, waiting 5s..."
             sleep 5
+            if [ $i -eq 18 ]; then
+              echo "Frontend never became ready. Showing logs:"
+              docker compose logs
+              exit 1
+            fi
+          done
+
+      - name: Wait for API to be reachable (max 60s)
+        run: |
+          echo "Waiting for API..."
+          for i in $(seq 1 12); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API is up!"
+              break
+            fi
+            echo "Attempt $i/12 — not ready yet, waiting 5s..."
+            sleep 5
+            if [ $i -eq 12 ]; then
+              echo "API never became ready. Showing logs:"
+              docker compose logs
+              exit 1
+            fi
           done
 
       - name: Submit a job via frontend
         run: |
-          RESPONSE=$(curl -s -X POST http://localhost:3000/submit)
+          RESPONSE=$(curl -sf -X POST http://localhost:3000/submit)
           echo "Submit response: $RESPONSE"
-          JOB_ID=$(echo $RESPONSE | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
-          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
+          JOB_ID=$(echo "$RESPONSE" | python3 -c "import sys,json; print(json.load(sys.stdin)['job_id'])")
           echo "Got job ID: $JOB_ID"
+          echo "JOB_ID=$JOB_ID" >> $GITHUB_ENV
 
       - name: Poll until job completes (max 60s)
         run: |
-          JOB_ID=${{ env.JOB_ID }}
+          JOB_ID="${{ env.JOB_ID }}"
+          echo "Polling job: $JOB_ID"
           for i in $(seq 1 12); do
-            STATUS_RESP=$(curl -s http://localhost:3000/status/$JOB_ID)
+            STATUS_RESP=$(curl -sf "http://localhost:3000/status/$JOB_ID" || echo '{"status":"error"}')
             echo "Poll $i: $STATUS_RESP"
-            STATUS=$(echo $STATUS_RESP | python3 -c "import sys,json; print(json.load(sys.stdin).get('status',''))")
+            STATUS=$(echo "$STATUS_RESP" | python3 -c "import sys,json; print(json.load(sys.stdin).get('status','unknown'))")
             if [ "$STATUS" = "completed" ]; then
               echo "Job completed successfully!"
               exit 0
             fi
             sleep 5
           done
-          echo "Job did not complete in time!"
+          echo "Job did not complete in time. Showing logs:"
+          docker compose logs
           exit 1
 
-      - name: Tear down stack (always runs)
+      - name: Tear down stack
         if: always()
         run: docker compose down -v
 
