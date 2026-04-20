@@ -20,8 +20,8 @@ def client(mock_redis):
     return TestClient(app)
 
 
-def test_health_endpoint(client, mock_redis):
-    """Test that /health returns ok."""
+def test_health_endpoint(client):
+    """Test that /health returns ok without requiring Redis."""
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok"}

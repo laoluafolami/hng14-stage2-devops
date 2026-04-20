@@ -14,7 +14,6 @@ r = redis.Redis(host=REDIS_HOST, port=REDIS_PORT, password=REDIS_PASSWORD)
 
 @app.get("/health")
 def health():
-    r.ping()
     return {"status": "ok"}
 
 
