@@ -223,35 +223,35 @@ jobs:
       - name: Start full stack
         run: docker compose up -d --build
 
-      - name: Wait for frontend to be reachable (max 90s)
+      - name: Wait for API to be reachable (max 120s)
         run: |
-          echo "Waiting for frontend..."
-          for i in $(seq 1 18); do
-            if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
-              echo "Frontend is up!"
+          echo "Waiting for API..."
+          for i in $(seq 1 24); do
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API is up!"
               break
             fi
-            echo "Attempt $i/18 — not ready yet, waiting 5s..."
+            echo "Attempt $i/24 — waiting 5s..."
             sleep 5
-            if [ $i -eq 18 ]; then
-              echo "Frontend never became ready. Showing logs:"
+            if [ $i -eq 24 ]; then
+              echo "API never became ready. Logs:"
               docker compose logs
               exit 1
             fi
           done
 
-      - name: Wait for API to be reachable (max 60s)
+      - name: Wait for frontend to be reachable (max 60s)
         run: |
-          echo "Waiting for API..."
+          echo "Waiting for frontend..."
           for i in $(seq 1 12); do
-            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
-              echo "API is up!"
+            if curl -sf http://localhost:3000/health > /dev/null 2>&1; then
+              echo "Frontend is up!"
               break
             fi
-            echo "Attempt $i/12 — not ready yet, waiting 5s..."
+            echo "Attempt $i/12 — waiting 5s..."
             sleep 5
             if [ $i -eq 12 ]; then
-              echo "API never became ready. Showing logs:"
+              echo "Frontend never became ready. Logs:"
               docker compose logs
               exit 1
             fi
