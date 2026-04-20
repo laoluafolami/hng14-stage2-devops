@@ -2,7 +2,6 @@ import redis
 import time
 import os
 import signal
-import sys
 
 REDIS_HOST = os.getenv("REDIS_HOST", "redis")
 REDIS_PORT = int(os.getenv("REDIS_PORT", 6379))
@@ -25,7 +24,7 @@ signal.signal(signal.SIGINT, handle_signal)
 
 def process_job(job_id):
     print(f"Processing job {job_id}")
-    time.sleep(2)  # simulate work
+    time.sleep(2)
     r.hset(f"job:{job_id}", "status", "completed")
     print(f"Done: {job_id}")
 
