@@ -314,17 +314,16 @@ jobs:
           docker compose build api
           docker compose up -d --no-deps api
 
-          TIMEOUT=60
+          TIMEOUT=120
           ELAPSED=0
           while true; do
             ELAPSED=$((ELAPSED + 5))
             sleep 5
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q api) 2>/dev/null || echo "unknown")
-            echo "API health: $STATUS (${ELAPSED}s elapsed)"
-            if [ "$STATUS" = "healthy" ]; then
-              echo "API is healthy."
+            if curl -sf http://localhost:8000/health > /dev/null 2>&1; then
+              echo "API is healthy after ${ELAPSED}s."
               break
             fi
+            echo "API health: not ready (${ELAPSED}s elapsed)"
             if [ $ELAPSED -ge $TIMEOUT ]; then
               echo "API failed health check after ${TIMEOUT}s — aborting"
               docker compose logs api
@@ -343,17 +342,18 @@ jobs:
           docker compose build frontend
           docker compose up -d --no-deps frontend
 
-          TIMEOUT=60
+          TIMEOUT=120
           ELAPSED=0
           while true; do
             ELAPSED=$((ELAPSED + 5))
             sleep 5
-            STATUS=$(docker inspect --format='{{.State.Health.Status}}' $(docker compose ps -q frontend) 2>/dev/null || echo "unknown")
-            echo "Frontend health: $STATUS (${ELAPSED}s elapsed)"
-            if [ "$STATUS" = "healthy" ]; then
-              echo "Frontend is healthy. Deploy complete."
+            if docker compose exec -T frontend node -e \
+              "require('http').get('http://localhost:3000/health', (r) => { process.exit(r.statusCode === 200 ? 0 : 1) }).on('error', () => process.exit(1))" \
+              > /dev/null 2>&1; then
+              echo "Frontend is healthy after ${ELAPSED}s."
               break
             fi
+            echo "Frontend health: not ready (${ELAPSED}s elapsed)"
             if [ $ELAPSED -ge $TIMEOUT ]; then
               echo "Frontend failed health check after ${TIMEOUT}s — aborting"
               docker compose logs frontend
